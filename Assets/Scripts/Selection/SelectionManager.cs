@@ -20,14 +20,17 @@ namespace EmpiresBattle.Selection
         /// <summary>Fired whenever the selection changes; passes null on deselect.</summary>
         public event Action<HexUnit> SelectionChanged;
 
-        private readonly HashSet<HexCoord> _highlighted = new();
+        private readonly HashSet<HexCoord> _moveHighlighted = new();
+        private readonly HashSet<HexCoord> _attackHighlighted = new();
 
         private void Awake()
         {
             Instance = this;
         }
 
-        public bool IsReachable(HexCoord coord) => _highlighted.Contains(coord);
+        public bool IsReachable(HexCoord coord) => _moveHighlighted.Contains(coord);
+
+        public bool IsAttackable(HexCoord coord) => _attackHighlighted.Contains(coord);
 
         public void Select(HexUnit unit)
         {
@@ -61,6 +64,9 @@ namespace EmpiresBattle.Selection
             ApplyHighlights();
         }
 
+        /// <summary>Hides the current highlight set immediately, e.g. as soon as a move/attack has been issued.</summary>
+        public void HideHighlights() => ClearHighlights();
+
         private void ApplyHighlights()
         {
             if (Selected == null || Selected.CurrentCell == null || HexGrid.Instance == null)
@@ -68,13 +74,31 @@ namespace EmpiresBattle.Selection
                 return;
             }
 
-            _highlighted.UnionWith(HexReachability.ComputeReachable(HexGrid.Instance, Selected.CurrentCell, Selected.MoveRange));
+            foreach (HexCoord neighborCoord in Selected.CurrentCell.Coord.GetNeighbors())
+            {
+                if (HexGrid.Instance.TryGetCell(neighborCoord, out _))
+                {
+                    _attackHighlighted.Add(neighborCoord);
+                }
+            }
 
-            foreach (HexCoord coord in _highlighted)
+            HashSet<HexCoord> reachable = HexReachability.ComputeReachable(HexGrid.Instance, Selected.CurrentCell, Selected.MoveRange);
+            reachable.ExceptWith(_attackHighlighted);
+            _moveHighlighted.UnionWith(reachable);
+
+            foreach (HexCoord coord in _moveHighlighted)
             {
                 if (HexGrid.Instance.TryGetCell(coord, out HexCell cell))
                 {
-                    cell.SetHighlighted(true);
+                    cell.SetHighlighted(HexHighlightType.Move);
+                }
+            }
+
+            foreach (HexCoord coord in _attackHighlighted)
+            {
+                if (HexGrid.Instance.TryGetCell(coord, out HexCell cell))
+                {
+                    cell.SetHighlighted(HexHighlightType.Attack);
                 }
             }
         }
@@ -83,16 +107,25 @@ namespace EmpiresBattle.Selection
         {
             if (HexGrid.Instance != null)
             {
-                foreach (HexCoord coord in _highlighted)
+                foreach (HexCoord coord in _moveHighlighted)
                 {
                     if (HexGrid.Instance.TryGetCell(coord, out HexCell cell))
                     {
-                        cell.SetHighlighted(false);
+                        cell.SetHighlighted(HexHighlightType.None);
+                    }
+                }
+
+                foreach (HexCoord coord in _attackHighlighted)
+                {
+                    if (HexGrid.Instance.TryGetCell(coord, out HexCell cell))
+                    {
+                        cell.SetHighlighted(HexHighlightType.None);
                     }
                 }
             }
 
-            _highlighted.Clear();
+            _moveHighlighted.Clear();
+            _attackHighlighted.Clear();
         }
     }
 }

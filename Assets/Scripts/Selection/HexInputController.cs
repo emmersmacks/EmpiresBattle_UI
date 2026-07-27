@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using EmpiresBattle.Grid;
 using EmpiresBattle.Units;
 using UnityEngine;
@@ -45,6 +46,13 @@ namespace EmpiresBattle.Selection
                 return;
             }
 
+            SelectionManager manager = SelectionManager.Instance;
+
+            if (manager.HasSelection && manager.Selected.IsBusy)
+            {
+                return;
+            }
+
             Vector3 screenPoint = new Vector3(screenPos.x, screenPos.y, -worldCamera.transform.position.z);
             Vector3 worldPoint = worldCamera.ScreenToWorldPoint(screenPoint);
 
@@ -60,24 +68,43 @@ namespace EmpiresBattle.Selection
 
             if (hexHit != null && hexHit.TryGetComponent(out HexCell cell))
             {
-                TryMoveSelectedTo(cell);
+                TryActOnCell(cell);
                 return;
             }
 
             SelectionManager.Instance.Clear();
         }
 
-        private void TryMoveSelectedTo(HexCell cell)
+        private void TryActOnCell(HexCell cell)
         {
             SelectionManager manager = SelectionManager.Instance;
 
-            if (!manager.HasSelection || !manager.IsReachable(cell.Coord))
+            if (!manager.HasSelection || manager.Selected.IsBusy)
             {
                 return;
             }
 
-            manager.Selected.TeleportTo(cell);
-            manager.RefreshHighlights();
+            if (manager.IsAttackable(cell.Coord))
+            {
+                manager.HideHighlights();
+                manager.Selected.Attack(manager.RefreshHighlights);
+                return;
+            }
+
+            if (!manager.IsReachable(cell.Coord))
+            {
+                return;
+            }
+
+            List<HexCell> path = HexPathfinder.FindPath(HexGrid.Instance, manager.Selected.CurrentCell, cell);
+
+            if (path == null || path.Count == 0)
+            {
+                return;
+            }
+
+            manager.HideHighlights();
+            manager.Selected.MoveAlongPath(path, manager.RefreshHighlights);
         }
     }
 }
